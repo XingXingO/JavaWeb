@@ -1,0 +1,245 @@
+##  1)创建线程的五种方式    
+##  2)中断线程
+##  3)多线程并发执行和单线程直接的对比
+##  4)Thread 的 run 和 start 之间的区别
+##  5)线程终止的两种判定方式
+##  6)线程等待
+
+1)创建线程的五种方式 :
+1、显式继承 Thread
+public class ThreadDemo1 {
+    //创建线程，重写 run 类，继承 Thread 方法
+    static class MyThread extends Thread {
+        @Override
+        public void run() {   //重写Thread 中的 run方法
+            System.out.println("hello world,我是一个线程");
+        }
+    }
+
+    public static void main(String[] args) {
+        //创建线程需要使用 Thread 类，来创建一个 Thread 的实例
+        //另一方面还需要给这个线程指定，要执行哪些指令/代码
+        //指定指令的方式有很多种方式，此处先用一种最简单的，直接继承Thread类
+
+        //[注意！] 当Thread对象被创建出来时，内核中并没有产生PCB
+        Thread t = new MyThread();
+        //执行这个 start 方法，才是真的创建出一个线程,此时出现的PCB对应CPU执行上面的run方法
+        t.start();
+
+    }
+}
+
+2、通过匿名内部类的方式继承 Thread
+Thread t = new Thread() {
+    @Override
+    public void run() {
+
+    }
+};
+t.start();
+
+3、显式创建一个类，实现 Runnable 接口，然后把这个 Runnable 的实例关联到 Thread 实例上
+ static class MyRunnable implements Runnable {
+        //Runnable 本质上就是描述了一段要执行的任务代码是啥
+
+        @Override
+        public void run() {
+            System.out.println("我是一个新线程");
+        }
+    }
+    public static void main(String[] args) {
+        Thread t = new Thread(new MyRunnable());
+        t.start();
+    }
+
+4、通过匿名内部类来实现Runnable 接口
+Runnable runnable = new Runnable() {
+    @Override
+    public void run() {
+        System.out.println("我是一个新线程");
+    }
+};
+    Thread t = new Thread(runnable);
+    t.start();
+}
+
+5、使用lambda 表达式来指定 线程执行的内容
+Thread t = new Thread(() -> {
+     System.out.println("我是一个新线程");
+});
+t.start();
+
+
+
+
+
+
+
+
+2)中断线程
+public class ThreadDemo1 {
+    //对于新线程，run方法执行完成，线程结束；  对于主线程，main方法执行完成，线程结束
+    private static boolean isQuit = false;
+
+    public static void main(String[] args) throws InterruptedException {  //sleep可能抛出异常
+        Thread t = new Thread() {
+            @Override
+            public void run() {
+                while(!isQuit) {
+                    System.out.println("我在继续执行赚钱操作");
+                    //防止进程执行太快，加入休眠sleep操作
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+                System.out.println("赚钱操作被终止！");
+            }
+        };
+        t.start();
+
+        //sleep作用:让当前线程停下来,这里的5000停5s,不会对其它线程造成影响
+        Thread.sleep(5000);
+        System.out.println("对方是内鬼，赶快终止交易");
+        isQuit = true;
+        //run线程 和 主线程 同时执行，循环打印，当程序走到 sleep, run线程 等待5后继续执行
+        //此时isQuit = true 不满足循环条件，跳出循环
+    }
+}
+
+
+
+
+
+
+
+3)多线程并发执行和单线程直接的对比
+例：针对一个整数进行大量的循环相加
+public class ThreadDemo2 {
+    //通过下划线对0进行分割，下划线无任何意义，提高代码可读性
+    private static long count  = 100_0000_0000L;
+
+    public static void main(String[] args) {
+        serial();  //串行
+        concurrency();  //并发
+    }
+
+    private static void serial() {
+        //记录代码执行时间
+        long beg = System.currentTimeMillis();  //记录开始的时间戳
+        int a = 0;
+        for(long i = 0; i < count; i++) {
+            a++;
+        }
+        int b = 0;
+        for(long i = 0; i < count; i++) {
+            b++;
+        }
+
+        long end = System.currentTimeMillis();  //记录结束的时间戳
+        System.out.println("time:" + (end - beg) + "ms");
+        //time:28000ms  串行执行是28s
+    }
+
+    private static void concurrency() {
+        long beg = System.currentTimeMillis();  //记录开始的时间戳
+        //创建线程 t1
+        Thread t1 = new Thread() {
+            //匿名内部类
+            //创建了一个没有名字的类，只知道这个类继承自Thread
+            //{}中是这个类的具体代码，同时也会 new 出来一个这个类的实例
+            @Override
+            public void run() {
+                int a = 0;
+                for(long i = 0; i < count; i++) {
+                    a++;
+                }
+            }
+        };
+        //创建线程 t2
+        Thread t2 = new Thread() {
+            @Override
+            public void run() {
+                int b = 0;
+                for(long i = 0; i < count; i++) {
+                    b++;
+                }
+            }
+        };
+        //启动线程
+        t1.start();
+        t2.start();
+        //线程等待，当主线程等待 t1 和 t2执行结束，然后在执行主线程
+        try {
+            t1.join();
+            t2.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        //t1 t2 和 main 线程之间都是并发执行的
+        //调用 t1.start 和 t2.start 之后，两个线程在计算过程中，此时主线程也会执行，end就随之被计算
+        //正确做法：保证 t1 和 t2 都计算完成，再来计算 end 的时间戳
+        long end = System.currentTimeMillis();  //记录结束的时间戳
+        System.out.println("time:" + (end - beg) + "ms");
+        //time:17000ms  并发执行是17s
+    }
+}
+
+
+
+
+
+
+
+4)Thread 的 run 和 start 之间的区别
+public class ThreadDemo3 {
+    static class MyThread extends Thread {
+        @Override
+        public void run() {
+            System.out.println("这是一个新线程");
+        }
+    }
+
+    public static void main(String[] args) {
+        Thread t = new MyThread();
+        t.run();  //普通方法调用，没有创建新线程，输出语句是在原线程中执行
+        t.start();  //创建新线程，由新的线程来执行输出
+    }
+}
+
+
+
+
+
+
+5)线程终止的两种判定方式
+public class ThreadDemo4 {
+    public static void main(String[] args) {
+        Thread t = new Thread() {
+            @Override
+            public void run() {
+                for(int i = 0; i <10 ; i++) {
+                    System.out.println(Thread.interrupted());
+                    //运行结果1：true、false、false、false
+                    //t.interrupt被调用时，Thead.interrupted()能感知到，只判定一次就把标记位设为false
+
+                    System.out.println(Thread.currentThread().isInterrupted());
+                    //运行结果2：true、true、true、true   标记位没有被清除
+                }
+            }
+        };
+        t.start();
+        t.interrupt();
+
+    }
+}
+
+
+
+
+
+6)线程等待
+
+
+
