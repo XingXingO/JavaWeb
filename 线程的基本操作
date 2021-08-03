@@ -4,6 +4,7 @@
 ##  4)Thread 的 run 和 start 之间的区别
 ##  5)线程终止的两种判定方式
 ##  6)线程等待
+##  7)线程状态
 
 1)创建线程的五种方式 :
 1、显式继承 Thread
@@ -294,5 +295,81 @@ public class ThreadDemo5 {
     }
 }
 
+
+
+
+
+7)线程状态
+线程状态
+线程一共有哪些状态？
+NEW：Thread对象有了，但是PCB还没有.(任务安排了，但是还没开始执行)
+RUNNABLE：线程正在CPU上执行，或即将到CPU上执行(PCB在就绪队列中，随时可能被调度到)
+WAITING: wait方法导致
+TIMED_WAITING: sleep方法导致
+BLOCKED: 等待锁导致
+(以上三种都表示线程被阻塞，只是阻塞的原因不同)
+TERMINATED：Thread对象还在，但是PCB没了
+
+观察以下两个程序状态的转换
+观察1、关注 NEW、RUNNABLE、TERMINATED 状态的转换
+public class ThreadDemo {
+    public static void main(String[] args) {
+        //创建线程
+        Thread t = new Thread() {
+            //重写 run方法
+            @Override
+            public void run() {
+                for (int i = 0; i < 10; i++) {
+
+                }
+            }
+        };
+        System.out.println("线程启动之前：" + t.getState());
+        t.start();
+        //如果线程存活，就一直打印该状态
+        while(t.isAlive()) {
+            System.out.println("线程正在运行中：" + t.getState());
+        }
+        System.out.println("线程结束后：" + t.getState());
+    }
+}
+
+观察2、关注 WAITING、BLOCKED、TIMED_WAITING 状态的转换
+public class ThreadDemo6 {
+    public static void main(String[] args) throws InterruptedException {
+        Object object = new Object();
+
+        Thread t = new Thread(() -> {
+            synchronized (object) {
+                try {
+                    object.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                for(int i = 0; i <1000_000; i++) {
+
+                }
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        System.out.println(t.getState());
+        t.start();
+        System.out.println(t.getState());
+        Thread.sleep(10);
+        synchronized (object) {
+            for(int i = 0; i > 10; i++) {
+                System.out.println(t.getState());
+            }
+            object.notify();
+        }
+        while (t.isAlive()) {
+            System.out.println(t.getState());
+        }
+    }
+}
 
 
