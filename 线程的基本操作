@@ -378,7 +378,9 @@ public class ThreadDemo6 {
 
 
 
-//多线程安全问题  例1、
+
+8)多线程安全问题 
+例1、
 public class ThreadDemo7 {
     static class Counter {
         public int count = 0;
