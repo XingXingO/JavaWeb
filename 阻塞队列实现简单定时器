@@ -1,0 +1,221 @@
+阻塞队列！
+        可以用来实现生产者消费者模型——一种典型的并发编程方式
+
+        阻塞队列是一个先进先出的队列
+        使用 wait 和 notify 实现阻塞队列以下特点：
+        入队列的时候如果发现队列满了，就会阻塞。直到有其他线程调用出队列操作让队列中有空位之后，才能继续入队列
+        出队列的时候如果发现队列空了，就会阻塞。直到有其他线程调用出队列操作让队列中有空位之后，才能继续入队列
+        
+        public class ThreadDemo8 {
+    static class BlockingQueue {
+        //普通的队列咋实现
+        //1.基于链表
+        //2.基于数组 [此时使用这个方式]
+        private int[] array = new int[1000];
+        private int head = 0;
+        private int tail = 0;
+        private int size = 0;
+        //队列的基本操作
+        //1.入队列
+        //2.出队列
+        //3.取队首元素
+        //针对阻塞队列，只提供前两个操作，不支持取队首元素
+
+        //阻塞版本入队列
+        public void put(int value) throws InterruptedException {
+            //加锁
+            synchronized (this) {
+                //判断队列是否满了，满了就进行阻塞
+                if(size == array.length) {
+                    wait();  //加入异常
+                }
+
+                //把 value 放到队尾即可
+                array[tail] = value;
+                tail++;
+                if (tail == array.length) {
+                    tail = 0;
+                }
+                size++;
+
+                notify();
+            }
+        }
+
+        //阻塞版本出队列
+        public int take() throws InterruptedException {
+            int ret = -1;
+            synchronized (this) {
+                //判断队列是否为空，空了就进行阻塞
+                if(size == 0) {
+                    wait();
+                }
+                ret = array[head];
+                head++;
+                if(head == array.length) {
+                    head = 0;
+                }
+                size--;
+
+                notify();
+            }
+            return ret;
+        }
+    }
+
+    public static void main(String[] args) {
+        BlockingQueue blockingQueue = new BlockingQueue();
+        //搞两个线程，分别模拟生产者和消费者
+        //第一次，让消费者消费的快一些，生产者生产慢一些
+        //预期结果：消费者线程会阻塞等待
+        //第二次，生产者生产快一些，消费者慢一些，将sleep放到消费者中
+        Thread producer = new Thread() {
+            @Override
+            public void run() {
+                for(int i = 0 ; i < 10000; i++) {
+                    try {
+                        blockingQueue.put(i);
+                        System.out.println("生产元素："+ i);
+                        //生产间隔500毫秒
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+        producer.start();
+
+        Thread consumer = new Thread() {
+            @Override
+            public void run() {
+                while (true) {
+                    try {
+                        int ret = blockingQueue.take();
+                        System.out.println("消费元素：" + ret);
+                        //暂时不要 sleep
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+        consumer.start();
+    }
+}
+
+
+
+
+实现一个简单版本的定时器
+
+定时器的构成：
+1、使用一个Task类来描述一个要执行的任务，任务中包括两方面：具体执行什么？什么时间执行？
+2、使用一个阻塞优先队列来组织这些Task任务（PriorityBlockingQueue
+            ——判断当前队列中是否有任务时间到了，若需要执行，只需要判定队首元素是否到时间即可
+            ——此处使用优先队列是为了保证队首元素就是那个最早要被执行的任务
+3、使用一个扫描线程，定时扫描队首元素
+            ——构造方法中创建一个线程
+            ——线程具体在 run 方法中展开
+4、有一个接口，让调用者安排任务给定时器
+
+
+
+import java.util.PriorityQueue;
+import java.util.concurrent.PriorityBlockingQueue;
+
+public class ThreadDemo9 {
+    //优先队列中的元素必须是可比较的
+    //比较规则的指定主要是两种方式：
+    //1.让 Task 实现 Comparable 接口
+    //2.让优先队列构造的时候，传入一个比较器对象 （Comparator）
+    static class Task implements Comparable<Task>{
+        //Runnable 中有一个 run 方法，就可以借助这个 run 方法来描述要执行的具体任务
+        private Runnable command;
+        // time 表示啥时候来执行 command是绝对时间（ms级别的时间戳）
+        private long time;
+
+        //构造方法的参数表示：多少毫秒之后执行，（相对时间）
+        //                这个after相对时间参数只是为了后续用起来方便
+        public Task(Runnable command,long after) {
+            this.command = command;
+            this.time = System.currentTimeMillis() + after;
+        }
+
+        //执行任务的具体逻辑
+        public void run() {
+            command.run();
+        }
+
+        @Override
+        public int compareTo(Task o) {
+            //谁的时间小先执行
+            return (int) (this.time - o.time);
+        }
+    }
+
+    static class Worker extends Thread {
+        private  PriorityBlockingQueue<Task> queue = null;
+
+        //构造方法保证 run 里面可以取到 queue
+        public Worker(PriorityBlockingQueue<Task> queue) {
+            this.queue = queue;
+        }
+
+        @Override
+        public void run() {
+            //实现具体的线程执行内容
+            while(true) {
+                try {
+                    //1.先取出队首元素，检查时间是否到了
+                    Task task = queue.take();
+                    //获取当前时间
+                    long curTime = System.currentTimeMillis();
+                    //2.检查当前任务时间是否到了
+                    if(task.time > curTime) {
+                        //预期时间还没到,就把任务再塞回队列中
+                        queue.put(task);
+                    } else {  //时间到，直接执行 run
+                        task.run();
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                    break;
+                }
+
+            }
+        }
+    }
+
+    static class Timer {
+        //定时器的基本构成有三部分
+        //1.用一个类来描述“任务”
+        //2.用一个阻塞优先队列来组织若干个任务，让队首元素就是时间最早的任务
+        //  如果队首元素时间未到，那么其他元素也肯定不能执行
+        private PriorityBlockingQueue<Task> queue = new PriorityBlockingQueue<>();  //带优先级的阻塞队列
+        //3.用一个线程来循环扫描当前的阻塞队列的队首元素，如果时间到就执行指定的任务
+        public Timer () {
+            //创建线程  (定时扫描队首元素
+            Worker worker = new Worker(queue);
+            worker.start();
+        }
+        //4.还需要提供一个方法，让调用者能把任务给“安排” 进来
+        //  schedule => 安排的意思
+        public void schedule(Runnable command, long after) {
+            Task task = new Task(command,after);
+            queue.put(task);
+        }
+    }
+
+    public static void main(String[] args) {
+        Timer timer = new Timer();
+        timer.schedule(new Runnable() {
+            @Override
+            public void run() {
+                System.out.println("hehe");
+                //每隔 2秒钟就输出一个hehe,使用定时器达到循环效果
+                //timer.schedule(this,2000);
+            }
+        },2000);  //after:2000意思是程序等待 2 秒钟后执行
+    }
+}
